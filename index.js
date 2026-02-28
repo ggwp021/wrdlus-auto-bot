@@ -1,599 +1,483 @@
-
-#############################################
-#         WANDRLUST AUTO BOT               #
-#         Modified by Wyk                  #
-#############################################
-
-from colorama import init
-init(autoreset=True)
-
-def banner():
-    print("[91m__        __               _           _")
-    print("[93m\ \      / /__  _ __   ___| |__   __ _| |_")
-    print("[92m \ \ /\ / / _ \| '_ \ / __| '_ \ / _` | __|")
-    print("[96m  \ V  V / (_) | | | | (__| | | | (_| | |_")
-    print("[95m   \_/\_/ \___/|_| |_|\___|_| |_|\__,_|\__|")
-    print("[97m        Wandrlust Auto BOT - Modified by Si Thu Tun[0m
-")
-
-banner()
-
-from aiohttp import (
-    ClientResponseError,
-    ClientSession,
-    ClientTimeout,
-    BasicAuth
-)
-from aiohttp_socks import ProxyConnector
-from http.cookies import SimpleCookie
-from eth_account import Account
-from eth_account.messages import encode_defunct
-from eth_utils import to_hex
-from datetime import datetime, timezone
-from colorama import *
-import asyncio, random, json, pytz, sys, re, os
-
-wib = pytz.timezone('Asia/Jakarta')
-
-class Wandrlust:
-    def __init__(self) -> None:
-        self.BASE_API = "https://rewards.wandrlust.io"
-        self.WEB_ID = "ab969dcc-ac68-4729-a576-652e1b3ece98"
-        self.ORG_ID = "74495128-d214-4056-bb05-baa8e5b2c639"
-        self.RULES_ID = "7ee60bbe-7de9-48f2-83be-6dfe10752d6d"
-        self.REF_CODE = "EM9PLD9V" # U can change it with yours.
-        self.USE_PROXY = False
-        self.ROTATE_PROXY = False
-        self.HEADERS = {}
-        self.proxies = []
-        self.proxy_index = 0
-        self.account_proxies = {}
-        self.header_cookies = {}
-
-        self.USER_AGENTS = [
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64; rv:133.0) Gecko/20100101 Firefox/133.0",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/18.1 Safari/605.1.15",
-            "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/129.0.0.0 Safari/537.36 Edg/129.0.0.0",
-            "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/130.0.0.0 Safari/537.36",
-            "Mozilla/5.0 (X11; Linux x86_64; rv:133.0) Gecko/20100101 Firefox/133.0",
-            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36 OPR/117.0.0.0"
-        ]
-
-    def clear_terminal(self):
-        os.system('cls' if os.name == 'nt' else 'clear')
-
-    def log(self, message):
-        print(
-            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}{message}",
-            flush=True
-        )
-
-    def welcome(self):
-        print(
-            f"""
-        {Fore.GREEN + Style.BRIGHT}Wandrlust {Fore.BLUE + Style.BRIGHT}Auto BOT
-            """
-            f"""
-        {Fore.GREEN + Style.BRIGHT}Rey? {Fore.YELLOW + Style.BRIGHT}<INI WATERMARK>
-            """
-        )
-
-    def format_seconds(self, seconds):
-        hours, remainder = divmod(seconds, 3600)
-        minutes, seconds = divmod(remainder, 60)
-        return f"{int(hours):02}:{int(minutes):02}:{int(seconds):02}"
-
-    def load_accounts(self):
-        filename = "accounts.txt"
-        try:
-            with open(filename, 'r') as file:
-                accounts = [line.strip() for line in file if line.strip()]
-            return accounts
-        except Exception as e:
-            print(f"{Fore.RED + Style.BRIGHT}Failed To Load Accounts: {e}{Style.RESET_ALL}")
-            return None
-
-    def load_proxies(self):
-        filename = "proxy.txt"
-        try:
-            if not os.path.exists(filename):
-                self.log(f"{Fore.RED + Style.BRIGHT}File {filename} Not Found.{Style.RESET_ALL}")
-                return
-            with open(filename, 'r') as f:
-                self.proxies = [line.strip() for line in f.read().splitlines() if line.strip()]
-
-            if not self.proxies:
-                self.log(f"{Fore.RED + Style.BRIGHT}No Proxies Found.{Style.RESET_ALL}")
-                return
-
-            self.log(
-                f"{Fore.GREEN + Style.BRIGHT}Proxies Total  : {Style.RESET_ALL}"
-                f"{Fore.WHITE + Style.BRIGHT}{len(self.proxies)}{Style.RESET_ALL}"
-            )
-
-        except Exception as e:
-            self.log(f"{Fore.RED + Style.BRIGHT}Failed To Load Proxies: {e}{Style.RESET_ALL}")
-            self.proxies = []
-
-    def check_proxy_schemes(self, proxies):
-        schemes = ["http://", "https://", "socks4://", "socks5://"]
-        if any(proxies.startswith(scheme) for scheme in schemes):
-            return proxies
-        return f"http://{proxies}"
-
-    def get_next_proxy_for_account(self, account):
-        if account not in self.account_proxies:
-            if not self.proxies:
-                return None
-            proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
-            self.account_proxies[account] = proxy
-            self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
-        return self.account_proxies[account]
-
-    def rotate_proxy_for_account(self, account):
-        if not self.proxies:
-            return None
-        proxy = self.check_proxy_schemes(self.proxies[self.proxy_index])
-        self.account_proxies[account] = proxy
-        self.proxy_index = (self.proxy_index + 1) % len(self.proxies)
-        return proxy
-
-    def build_proxy_config(self, proxy=None):
-        if not proxy:
-            return None, None, None
-
-        if proxy.startswith("socks"):
-            connector = ProxyConnector.from_url(proxy)
-            return connector, None, None
-
-        elif proxy.startswith("http"):
-            match = re.match(r"http://(.*?):(.*?)@(.*)", proxy)
-            if match:
-                username, password, host_port = match.groups()
-                clean_url = f"http://{host_port}"
-                auth = BasicAuth(username, password)
-                return None, clean_url, auth
-            else:
-                return None, proxy, None
-
-        raise Exception("Unsupported Proxy Type.")
-
-    def display_proxy(self, proxy_url=None):
-        if not proxy_url: return "No Proxy"
-
-        proxy_url = re.sub(r"^(http|https|socks4|socks5)://", "", proxy_url)
-
-        if "@" in proxy_url:
-            proxy_url = proxy_url.split("@", 1)[1]
-
-        return proxy_url
-
-    def extract_cookies(self, address, response, jar=SimpleCookie()):
-        if address in self.header_cookies:
-            jar.load(self.header_cookies[address])
-
-        for h in response.headers.getall("Set-Cookie", []):
-            jar.load(h)
-
-        jar["referral_code"] = self.REF_CODE
-
-        self.header_cookies[address] = "; ".join(f"{k}={m.value}" for k, m in jar.items())
-
-        return self.header_cookies[address]
-
-    def initialize_headers(self, address: str):
-        if address not in self.HEADERS:
-            self.HEADERS[address] = {
-                "Accept": "*/*",
-                "Accept-Encoding": "gzip, deflate, br",
-                "Accept-Language": "id-ID,id;q=0.9,en-US;q=0.8,en;q=0.7",
-                "Cache-Control": "no-cache",
-                "Origin": "https://rewards.wandrlust.io",
-                "Pragma": "no-cache",
-                "Referer": "https://rewards.wandrlust.io/loyality",
-                "Sec-Fetch-Dest": "empty",
-                "Sec-Fetch-Mode": "cors",
-                "Sec-Fetch-Site": "same-origin",
-                "User-Agent": random.choice(self.USER_AGENTS)
-            }
-
-        return self.HEADERS[address].copy()
-
-    def generate_address(self, private_key: str):
-        try:
-            account = Account.from_key(private_key)
-            address = account.address
-            return address
-        except Exception as e:
-            self.log(
-                f"{Fore.CYAN+Style.BRIGHT}Status  :{Style.RESET_ALL}"
-                f"{Fore.RED+Style.BRIGHT} Generate Address Failed {Style.RESET_ALL}"
-                f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
-            )
-            return None
-
-    def generate_payload(self, private_key: str, address: str, csrf_token: str):
-        try:
-            dt_now = datetime.now(timezone.utc).isoformat(timespec="milliseconds")
-            issued_at = dt_now.replace("+00:00", "Z")
-
-            raw_message = json.dumps({
-                "domain": "rewards.wandrlust.io",
-                "address": address,
-                "statement": "Sign in to the app. Powered by Snag Solutions.",
-                "uri": "https://rewards.wandrlust.io",
-                "version": "1",
-                "chainId": 1,
-                "nonce": csrf_token,
-                "issuedAt": issued_at
-            }, separators=(',', ':'))
-
-            message = (
-                "rewards.wandrlust.io wants you to sign in with your Ethereum account:\n"
-                f"{address}\n\n"
-                "Sign in to the app. Powered by Snag Solutions.\n\n"
-                "URI: https://rewards.wandrlust.io\n"
-                "Version: 1\n"
-                "Chain ID: 1\n"
-                f"Nonce: {csrf_token}\n"
-                f"Issued At: {issued_at}"
-            )
-
-            encoded_message = encode_defunct(text=message)
-            signed_message = Account.sign_message(encoded_message, private_key=private_key)
-            signature = to_hex(signed_message.signature)
-
-            payload = {
-                "message": raw_message,
-                "accessToken": signature,
-                "signature": signature,
-                "walletConnectorName": "MetaMask",
-                "walletAddress": address,
-                "redirect": "false",
-                "callbackUrl": "/protected",
-                "chainType": "evm",
-                "walletProvider": "undefined",
-                "csrfToken": csrf_token,
-                "json": "true"
-            }
-
-            return payload
-        except Exception as e:
-            raise Exception(f"Generate Req Payload Failed: {str(e)}")
-
-    def mask_account(self, account):
-        try:
-            mask_account = account[:6] + '*' * 6 + account[-6:]
-            return mask_account
-        except Exception as e:
-            return None
-
-    def print_question(self):
-        while True:
-            try:
-                print(f"{Fore.WHITE + Style.BRIGHT}1. Run With Proxy{Style.RESET_ALL}")
-                print(f"{Fore.WHITE + Style.BRIGHT}2. Run Without Proxy{Style.RESET_ALL}")
-                proxy_choice = int(input(f"{Fore.BLUE + Style.BRIGHT}Choose [1/2] -> {Style.RESET_ALL}").strip())
-
-                if proxy_choice in [1, 2]:
-                    proxy_type = (
-                        "With" if proxy_choice == 1 else 
-                        "Without"
-                    )
-                    print(f"{Fore.GREEN + Style.BRIGHT}Run {proxy_type} Proxy Selected.{Style.RESET_ALL}")
-                    self.USE_PROXY = True if proxy_choice == 1 else False
-                    break
-                else:
-                    print(f"{Fore.RED + Style.BRIGHT}Please enter either 1 or 2.{Style.RESET_ALL}")
-            except ValueError:
-                print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter a number (1 or 2).{Style.RESET_ALL}")
-
-        if self.USE_PROXY:
-            while True:
-                rotate_proxy = input(f"{Fore.BLUE + Style.BRIGHT}Rotate Invalid Proxy? [y/n] -> {Style.RESET_ALL}").strip()
-                if rotate_proxy in ["y", "n"]:
-                    self.ROTATE_PROXY = True if rotate_proxy == "y" else False
-                    break
-                else:
-                    print(f"{Fore.RED + Style.BRIGHT}Invalid input. Enter 'y' or 'n'.{Style.RESET_ALL}")
-
-    async def ensure_ok(self, response):
-        if response.status >= 400:
-            error_text = await response.text()
-            raise Exception(f"HTTP {response.status}: {error_text}")
-
-    async def check_connection(self, proxy_url=None):
-        url = "https://api.ipify.org?format=json"
-
-        connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
-        try:
-            async with ClientSession(connector=connector, timeout=ClientTimeout(total=30)) as session:
-                async with session.get(url=url, proxy=proxy, proxy_auth=proxy_auth) as response:
-                    await self.ensure_ok(response)
-                    return True
-        except (Exception, ClientResponseError) as e:
-            self.log(
-                f"{Fore.CYAN+Style.BRIGHT}Status  :{Style.RESET_ALL}"
-                f"{Fore.RED+Style.BRIGHT} Connection Not 200 OK {Style.RESET_ALL}"
-                f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
-            )
-
-        return None
-
-    async def auth_csrf(self, address: str, proxy_url=None, retries=5):
-        url = f"{self.BASE_API}/api/auth/csrf"
-
-        for attempt in range(retries):
-            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
-            try:
-                headers = self.initialize_headers(address)
-
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=url, headers=headers, proxy=proxy, proxy_auth=proxy_auth) as response:
-                        await self.ensure_ok(response)
-                        self.extract_cookies(address, response)
-                        return await response.json()
-            except (Exception, ClientResponseError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(5)
-                    continue
-                self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Login   :{Style.RESET_ALL}"
-                    f"{Fore.RED+Style.BRIGHT} Failed to Fetch Csrf Token {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
-                )
-
-        return None
-
-    async def auth_credentials(self, private_key: str, address: str, csrf_token: str, proxy_url=None, retries=5):
-        url = f"{self.BASE_API}/api/auth/callback/credentials"
-
-        for attempt in range(retries):
-            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
-            try:
-                headers = self.initialize_headers(address)
-                headers["Cookie"] = self.header_cookies[address]
-                headers["Content-Type"] = "application/json"
-                headers["X-Requested-With"] = "XMLHttpRequest"
-                payload = self.generate_payload(private_key, address, csrf_token)
-
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, json=payload, proxy=proxy, proxy_auth=proxy_auth) as response:
-                        await self.ensure_ok(response)
-                        self.extract_cookies(address, response)
-                        return True
-            except (Exception, ClientResponseError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(5)
-                    continue
-                self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Login   :{Style.RESET_ALL}"
-                    f"{Fore.RED+Style.BRIGHT} Failed to Fetch Session Token {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
-                )
-
-        return None
-
-    async def loyality_account(self, address: str, proxy_url=None, retries=5):
-        url = f"{self.BASE_API}/api/loyalty/accounts"
-
-        for attempt in range(retries):
-            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
-            try:
-                headers = self.initialize_headers(address)
-                headers["Cookie"] = self.header_cookies[address]
-                params = {
-                    "websiteId": self.WEB_ID, 
-                    "organizationId": self.ORG_ID, 
-                    "walletAddress": address
-                }
-
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.get(url=url, headers=headers, params=params, proxy=proxy, proxy_auth=proxy_auth) as response:
-                        await self.ensure_ok(response)
-                        return await response.json()
-            except (Exception, ClientResponseError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(5)
-                    continue
-                self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Balance :{Style.RESET_ALL}"
-                    f"{Fore.RED+Style.BRIGHT} Failed to Fetch Points {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
-                )
-
-        return None
-
-    async def complete_checkin(self, address: str, proxy_url=None, retries=5):
-        url = f"{self.BASE_API}/api/loyalty/rules/{self.RULES_ID}/complete"
-
-        for attempt in range(retries):
-            connector, proxy, proxy_auth = self.build_proxy_config(proxy_url)
-            try:
-                headers = self.initialize_headers(address)
-                headers["Cookie"] = self.header_cookies[address]
-                headers["Content-Type"] = "application/json"
-
-                async with ClientSession(connector=connector, timeout=ClientTimeout(total=60)) as session:
-                    async with session.post(url=url, headers=headers, proxy=proxy, proxy_auth=proxy_auth) as response:
-                        result = await response.json()
-
-                        if response.status == 400:
-                            err_msg = result.get("message")
-                            self.log(
-                                f"{Fore.CYAN+Style.BRIGHT}Check-In:{Style.RESET_ALL}"
-                                f"{Fore.YELLOW+Style.BRIGHT} {err_msg} {Style.RESET_ALL}"
-                            )
-                            return None
-
-                        await self.ensure_ok(response)
-                        return result
-            except (Exception, ClientResponseError) as e:
-                if attempt < retries - 1:
-                    await asyncio.sleep(5)
-                    continue
-                self.log(
-                    f"{Fore.CYAN+Style.BRIGHT}Check-In:{Style.RESET_ALL}"
-                    f"{Fore.RED+Style.BRIGHT} Failed {Style.RESET_ALL}"
-                    f"{Fore.MAGENTA+Style.BRIGHT}-{Style.RESET_ALL}"
-                    f"{Fore.YELLOW+Style.BRIGHT} {str(e)} {Style.RESET_ALL}"
-                )
-
-        return None
-
-    async def process_check_connection(self, address: str, proxy_url=None):
-        while True:
-            if self.USE_PROXY:
-                proxy_url = self.get_next_proxy_for_account(address)
-
-            self.log(
-                f"{Fore.CYAN+Style.BRIGHT}Proxy   :{Style.RESET_ALL}"
-                f"{Fore.WHITE+Style.BRIGHT} {self.display_proxy(proxy_url)} {Style.RESET_ALL}"
-            )
-
-            is_valid = await self.check_connection(proxy_url)
-            if is_valid: return True
-
-            if self.ROTATE_PROXY:
-                proxy_url = self.rotate_proxy_for_account(address)
-                await asyncio.sleep(1)
-                continue
-
-            return False
-
-    async def process_user_login(self, private_key: str, address: str, proxy_url=None):
-        is_valid = await self.process_check_connection(address, proxy_url)
-        if not is_valid: return False
-
-        if self.USE_PROXY:
-            proxy_url = self.get_next_proxy_for_account(address)
-
-        auth_csrf = await self.auth_csrf(address, proxy_url)
-        if not auth_csrf: return False
-
-        csrf_token = auth_csrf.get("csrfToken")
-
-        credentials = await self.auth_credentials(private_key, address, csrf_token, proxy_url)
-        if not credentials: return False
-
-        self.log(
-            f"{Fore.CYAN + Style.BRIGHT}Status  :{Style.RESET_ALL}"
-            f"{Fore.GREEN + Style.BRIGHT} Login Success {Style.RESET_ALL}"
-        )
-
-        return True
-
-    async def process_accounts(self, private_key: str, address: str, proxy_url=None):
-        logined = await self.process_user_login(private_key, address, proxy_url)
-        if not logined: return False
-
-        if self.USE_PROXY:
-            proxy_url = self.get_next_proxy_for_account(address)
-
-        loyality = await self.loyality_account(address, proxy_url)
-        if loyality:
-            loyality_data = loyality.get("data", [])
-
-            if loyality_data:
-                amount = loyality_data[0].get("amount", 0)
-            else:
-                amount = 0
-
-            self.log(
-                f"{Fore.CYAN+Style.BRIGHT}Balance :{Style.RESET_ALL}"
-                f"{Fore.WHITE+Style.BRIGHT} {amount} Points {Style.RESET_ALL}"
-            )
-
-        checkin = await self.complete_checkin(address, proxy_url)
-        if checkin:
-            self.log(
-                f"{Fore.CYAN+Style.BRIGHT}Check-In:{Style.RESET_ALL}"
-                f"{Fore.GREEN+Style.BRIGHT} Success {Style.RESET_ALL}"
-            )
-
-    async def main(self):
-        try:
-            accounts = self.load_accounts()
-            if not accounts:
-                print(f"{Fore.RED+Style.BRIGHT}No Accounts Loaded.{Style.RESET_ALL}") 
-                return
-
-            self.print_question()
-
-            while True:
-                self.clear_terminal()
-                self.welcome()
-                self.log(
-                    f"{Fore.GREEN + Style.BRIGHT}Account's Total: {Style.RESET_ALL}"
-                    f"{Fore.WHITE + Style.BRIGHT}{len(accounts)}{Style.RESET_ALL}"
-                )
-
-                if self.USE_PROXY: self.load_proxies()
-
-                separator = "=" * 25
-                for idx, private_key in enumerate(accounts, start=1):
-
-                    self.log(
-                        f"{Fore.CYAN + Style.BRIGHT}{separator}[{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {idx} {Style.RESET_ALL}"
-                        f"{Fore.CYAN + Style.BRIGHT}-{Style.RESET_ALL}"
-                        f"{Fore.WHITE + Style.BRIGHT} {len(accounts)} {Style.RESET_ALL}"
-                        f"{Fore.CYAN + Style.BRIGHT}]{separator}{Style.RESET_ALL}"
-                    )
-
-                    address = self.generate_address(private_key)
-                    if not address: continue
-
-                    self.log(
-                        f"{Fore.CYAN+Style.BRIGHT}Address :{Style.RESET_ALL}"
-                        f"{Fore.WHITE+Style.BRIGHT} {self.mask_account(address)} {Style.RESET_ALL}"
-                    )
-
-                    await self.process_accounts(private_key, address)
-                    await asyncio.sleep(random.uniform(2.0, 3.0))
-
-                self.log(f"{Fore.CYAN + Style.BRIGHT}={Style.RESET_ALL}"*72)
-
-                delay = 24 * 60 * 60
-                while delay > 0:
-                    formatted_time = self.format_seconds(delay)
-                    print(
-                        f"{Fore.CYAN+Style.BRIGHT}[ Wait for{Style.RESET_ALL}"
-                        f"{Fore.WHITE+Style.BRIGHT} {formatted_time} {Style.RESET_ALL}"
-                        f"{Fore.CYAN+Style.BRIGHT}... ]{Style.RESET_ALL}"
-                        f"{Fore.WHITE+Style.BRIGHT} | {Style.RESET_ALL}"
-                        f"{Fore.BLUE+Style.BRIGHT}All Accounts Have Been Processed...{Style.RESET_ALL}",
-                        end="\r",
-                        flush=True
-                    )
-                    await asyncio.sleep(1)
-                    delay -= 1
-
-        except Exception as e:
-            self.log(f"{Fore.RED+Style.BRIGHT}Error: {e}{Style.RESET_ALL}")
-            raise e
-        except asyncio.CancelledError:
-            raise
-
-if __name__ == "__main__":
-    try:
-        bot = Wandrlust()
-        asyncio.run(bot.main())
-    except KeyboardInterrupt:
-        print(
-            f"{Fore.CYAN + Style.BRIGHT}[ {datetime.now().astimezone(wib).strftime('%x %X %Z')} ]{Style.RESET_ALL}"
-            f"{Fore.WHITE + Style.BRIGHT} | {Style.RESET_ALL}"
-            f"{Fore.RED + Style.BRIGHT}[ EXIT ] Wandrlust - BOT{Style.RESET_ALL}                                       "                              
-        )
-    finally:
-        sys.exit(0)
+import axios from 'axios';
+import cfonts from 'cfonts';
+import gradient from 'gradient-string';
+import chalk from 'chalk';
+import fs from 'fs/promises';
+import readline from 'readline';
+import { HttpsProxyAgent } from 'https-proxy-agent';
+import { SocksProxyAgent } from 'socks-proxy-agent';
+import ora from 'ora';
+import { ethers } from 'ethers';
+
+const logger = {
+  info: (msg, options = {}) => {
+    const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const emoji = options.emoji || 'ℹ️  ';
+    const context = options.context ? `[${options.context}] ` : '';
+    const level = chalk.green('INFO');
+    const formattedMsg = `[ ${chalk.gray(timestamp)} ] ${emoji}${level} ${chalk.white(context.padEnd(20))}${chalk.white(msg)}`;
+    console.log(formattedMsg);
+  },
+  warn: (msg, options = {}) => {
+    const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const emoji = options.emoji || '⚠️ ';
+    const context = options.context ? `[${options.context}] ` : '';
+    const level = chalk.yellow('WARN');
+    const formattedMsg = `[ ${chalk.gray(timestamp)} ] ${emoji}${level} ${chalk.white(context.padEnd(20))}${chalk.white(msg)}`;
+    console.log(formattedMsg);
+  },
+  error: (msg, options = {}) => {
+    const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const emoji = options.emoji || '❌ ';
+    const context = options.context ? `[${options.context}] ` : '';
+    const level = chalk.red('ERROR');
+    const formattedMsg = `[ ${chalk.gray(timestamp)} ] ${emoji}${level} ${chalk.white(context.padEnd(20))}${chalk.white(msg)}`;
+    console.log(formattedMsg);
+  },
+  debug: (msg, options = {}) => {
+    const timestamp = new Date().toISOString().slice(0, 19).replace('T', ' ');
+    const emoji = options.emoji || '🔍  ';
+    const context = options.context ? `[${options.context}] ` : '';
+    const level = chalk.blue('DEBUG');
+    const formattedMsg = `[ ${chalk.gray(timestamp)} ] ${emoji}${level} ${chalk.white(context.padEnd(20))}${chalk.white(msg)}`;
+    console.log(formattedMsg);
+  }
+};
+
+function delay(seconds) {
+  return new Promise(resolve => setTimeout(resolve, seconds * 1000));
+}
+
+function stripAnsi(str) {
+  return str.replace(/\x1B\[[0-9;]*m/g, '');
+}
+
+function centerText(text, width) {
+  const cleanText = stripAnsi(text);
+  const textLength = cleanText.length;
+  const totalPadding = Math.max(0, width - textLength);
+  const leftPadding = Math.floor(totalPadding / 2);
+  const rightPadding = totalPadding - leftPadding;
+  return `${' '.repeat(leftPadding)}${text}${' '.repeat(rightPadding)}`;
+}
+
+function printHeader(title) {
+  const width = 80;
+  console.log(gradient.morning(`┬${'─'.repeat(width - 2)}┬`));
+  console.log(gradient.morning(`│ ${title.padEnd(width - 4)} │`));
+  console.log(gradient.morning(`┴${'─'.repeat(width - 2)}┴`));
+}
+
+function printInfo(label, value, context) {
+  logger.info(`${label.padEnd(15)}: ${chalk.cyan(value)}`, { emoji: '📍 ', context });
+}
+
+function printProfileInfo(address, points, context) {
+  printHeader(`Profile Info ${context}`);
+  printInfo('Address', address || 'N/A', context);
+  printInfo('Total Points', points.toString(), context);
+  console.log('\n');
+}
+
+const userAgents = [
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/15.0 Safari/605.1.15',
+  'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/105.0.0.0 Safari/537.36',
+  'Mozilla/5.0 (Windows NT 10.0; Win64; x64) Firefox/102.0'
+];
+
+function getRandomUserAgent() {
+  return userAgents[Math.floor(Math.random() * userAgents.length)];
+}
+
+function getAxiosConfig(proxy, additionalHeaders = {}) {
+  const headers = {
+    'accept': '*/*',
+    'accept-encoding': 'gzip, deflate, br',
+    'accept-language': 'en-GB,en-US;q=0.9,en;q=0.8,id;q=0.7,fr;q=0.6,ru;q=0.5,zh-CN;q=0.4,zh;q=0.3',
+    'cache-control': 'no-cache',
+    'content-type': 'application/json',
+    'pragma': 'no-cache',
+    'priority': 'u=1, i',
+    'referer': 'https://rewards.wandrlust.io/airdrop',
+    'sec-ch-ua': '"Chromium";v="140", "Not=A?Brand";v="24", "Opera";v="124"',
+    'sec-ch-ua-mobile': '?0',
+    'sec-ch-ua-platform': '"Windows"',
+    'sec-fetch-dest': 'empty',
+    'sec-fetch-mode': 'cors',
+    'sec-fetch-site': 'same-origin',
+    'user-agent': getRandomUserAgent(),
+    ...additionalHeaders
+  };
+  const config = {
+    headers,
+    timeout: 60000
+  };
+  if (proxy) {
+    config.httpsAgent = newAgent(proxy);
+    config.proxy = false;
+  }
+  return config;
+}
+
+function newAgent(proxy) {
+  if (proxy.startsWith('http://') || proxy.startsWith('https://')) {
+    return new HttpsProxyAgent(proxy);
+  } else if (proxy.startsWith('socks4://') || proxy.startsWith('socks5://')) {
+    return new SocksProxyAgent(proxy);
+  } else {
+    logger.warn(`Unsupported proxy: ${proxy}`);
+    return null;
+  }
+}
+
+async function requestWithRetry(method, url, payload = null, config = {}, retries = 3, backoff = 2000, context) {
+  for (let i = 0; i < retries; i++) {
+    try {
+      let response;
+      if (method.toLowerCase() === 'get') {
+        response = await axios.get(url, config);
+      } else if (method.toLowerCase() === 'post') {
+        response = await axios.post(url, payload, config);
+      } else {
+        throw new Error(`Method ${method} not supported`);
+      }
+      return response;
+    } catch (error) {
+      if (error.response && error.response.status >= 500 && i < retries - 1) {
+        logger.warn(`Retrying ${method.toUpperCase()} ${url} (${i + 1}/${retries}) due to server error`, { emoji: '🔄', context });
+        await delay(backoff / 1000);
+        backoff *= 1.5;
+        continue;
+      }
+      if (i < retries - 1) {
+        logger.warn(`Retrying ${method.toUpperCase()} ${url} (${i + 1}/${retries})`, { emoji: '🔄', context });
+        await delay(backoff / 1000);
+        backoff *= 1.5;
+        continue;
+      }
+      throw error;
+    }
+  }
+}
+
+async function readPrivateKeys() {
+  try {
+    const data = await fs.readFile('pk.txt', 'utf-8');
+    const privateKeys = data.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    if (privateKeys.length === 0) {
+      throw new Error('No private keys found in pk.txt');
+    }
+    logger.info(`Loaded ${privateKeys.length} private key${privateKeys.length === 1 ? '' : 's'}`, { emoji: '🔑 ' });
+    return privateKeys.map(pk => ({ privateKey: pk }));
+  } catch (error) {
+    logger.error(`Failed to read pk.txt: ${error.message}`, { emoji: '❌ ' });
+    return [];
+  }
+}
+
+async function readProxies() {
+  try {
+    const data = await fs.readFile('proxy.txt', 'utf-8');
+    const proxies = data.split('\n').map(line => line.trim()).filter(line => line.length > 0);
+    if (proxies.length === 0) {
+      logger.warn('No proxies found. Proceeding without proxy.', { emoji: '⚠️ ' });
+    } else {
+      logger.info(`Loaded ${proxies.length} prox${proxies.length === 1 ? 'y' : 'ies'}`, { emoji: '🌐 ' });
+    }
+    return proxies;
+  } catch (error) {
+    logger.warn('proxy.txt not found.', { emoji: '⚠️ ' });
+    return [];
+  }
+}
+
+function maskAddress(address) {
+  return address ? `${address.slice(0, 6)}${'*'.repeat(6)}${address.slice(-6)}` : 'N/A';
+}
+
+function deriveWalletAddress(privateKey) {
+  try {
+    const wallet = new ethers.Wallet(privateKey);
+    return wallet.address;
+  } catch (error) {
+    logger.error(`Failed to derive address: ${error.message}`);
+    return null;
+  }
+}
+
+async function createSignedPayload(privateKey, address, nonce) {
+  try {
+    const wallet = new ethers.Wallet(privateKey);
+    const issuedAt = new Date().toISOString();
+    const messageObj = {
+      domain: "rewards.wandrlust.io",
+      address: address,
+      statement: "Sign in to the app. Powered by Snag Solutions.",
+      uri: "https://rewards.wandrlust.io",
+      version: "1",
+      chainId: 1,
+      nonce: nonce,
+      issuedAt: issuedAt
+    };
+    const rawMessage = JSON.stringify(messageObj, null, 0);
+
+    const fullMessage = `rewards.wandrlust.io wants you to sign in with your Ethereum account:\n` +
+      `${address}\n\n` +
+      `Sign in to the app. Powered by Snag Solutions.\n\n` +
+      `URI: https://rewards.wandrlust.io\n` +
+      `Version: 1\n` +
+      `Chain ID: 1\n` +
+      `Nonce: ${nonce}\n` +
+      `Issued At: ${issuedAt}`;
+
+    const signedMessage = await wallet.signMessage(fullMessage);
+
+    return {
+      message: rawMessage,
+      accessToken: signedMessage,
+      signature: signedMessage,
+      walletConnectorName: "MetaMask",
+      walletAddress: address,
+      redirect: "false",
+      callbackUrl: "/protected",
+      chainType: "evm",
+      walletProvider: "undefined",
+      csrfToken: nonce,
+      json: "true"
+    };
+  } catch (error) {
+    throw new Error(`Failed to create signed payload: ${error.message}`);
+  }
+}
+
+async function fetchNonce(address, proxy, context, refCode = 'M648SLT2') {
+  const url = 'https://rewards.wandrlust.io/api/auth/csrf';
+  const config = getAxiosConfig(proxy, {
+    'Content-Type': 'application/json',
+    'Cookie': `referral_code=${refCode}`
+  });
+  const spinner = ora({ text: 'Fetching nonce...', spinner: 'dots' }).start();
+  try {
+    const response = await requestWithRetry('get', url, null, config, 3, 2000, context);
+    spinner.stop();
+    if (response.data.csrfToken) {
+      return { csrfToken: response.data.csrfToken, setCookie: response.headers['set-cookie'] || [] };
+    } else {
+      throw new Error('Failed to fetch nonce');
+    }
+  } catch (error) {
+    spinner.fail(chalk.bold.redBright(` Failed to fetch nonce: ${error.message}`));
+    return null;
+  }
+}
+
+async function executeLogin(privateKey, address, nonce, proxy, context, cookies) {
+  const url = 'https://rewards.wandrlust.io/api/auth/callback/credentials';
+  const payload = await createSignedPayload(privateKey, address, nonce);
+  const config = getAxiosConfig(proxy, {
+    'Content-Type': 'application/x-www-form-urlencoded',
+    'Cookie': cookies.join('; ')
+  });
+  const spinner = ora({ text: 'Executing login...', spinner: 'dots' }).start();
+  try {
+    const response = await requestWithRetry('post', url, new URLSearchParams(payload).toString(), config, 3, 2000, context);
+    spinner.stop();
+    const sessionCookies = response.headers['set-cookie'] || [];
+    const hasSession = sessionCookies.some(ck => ck.includes('__Secure-next-auth.session-token='));
+    if (hasSession) {
+      return { success: true, sessionCookies };
+    } else {
+      throw new Error('Login failed');
+    }
+  } catch (error) {
+    spinner.fail(chalk.bold.redBright(` Failed to execute login: ${error.message}`));
+    return null;
+  }
+}
+
+async function retrieveBalance(address, proxy, context, cookies, webId = 'ab969dcc-ac68-4729-a576-652e1b3ece98', orgId = '74495128-d214-4056-bb05-baa8e5b2c639') {
+  const url = `https://rewards.wandrlust.io/api/loyalty/accounts?limit=100&websiteId=${webId}&organizationId=${orgId}&walletAddress=${address}`;
+  const config = getAxiosConfig(proxy, { 'Cookie': cookies.join('; ') });
+  const spinner = ora({ text: 'Retrieving balance...', spinner: 'dots' }).start();
+  try {
+    const response = await requestWithRetry('get', url, null, config, 3, 2000, context);
+    spinner.stop();
+    if (response.data.data && response.data.data.length > 0) {
+      const amount = response.data.data[0].amount || 0;
+      if (amount === 0) {
+        logger.warn('Balance retrieved but amount is 0. Possible server delay or account issue.', { emoji: '⚠️ ', context });
+      }
+      return amount;
+    } else {
+      logger.warn('No balance data found.', { emoji: '⚠️ ', context });
+      return 0;
+    }
+  } catch (error) {
+    spinner.fail(chalk.bold.redBright(` Failed to retrieve balance: ${error.message}`));
+    return null;
+  }
+}
+
+async function executeDailyCheckin(address, proxy, context, cookies) {
+  const url = 'https://rewards.wandrlust.io/api/loyalty/rules/7ee60bbe-7de9-48f2-83be-6dfe10752d6d/complete';
+  const config = getAxiosConfig(proxy, {
+    'Content-Type': 'application/json',
+    'Content-Length': '2',
+    'Cookie': cookies.join('; ')
+  });
+  config.validateStatus = (status) => status >= 200 && status < 500;
+  const spinner = ora({ text: 'Executing daily check-in...', spinner: 'dots' }).start();
+  try {
+    const response = await requestWithRetry('post', url, {}, config, 3, 2000, context);
+    if (response.status === 400) {
+      spinner.warn(chalk.bold.yellowBright(` ${response.data.message || 'Already checked in today'}`));
+      return { success: false, message: response.data.message || 'Already claimed' };
+    }
+    spinner.succeed(chalk.bold.greenBright(` Check-In Successfully!`));
+    return { success: true };
+  } catch (error) {
+    spinner.fail(chalk.bold.redBright(` Failed to execute check-in: ${error.message}`));
+    return null;
+  }
+}
+
+async function getPublicIP(proxy, context) {
+  try {
+    const config = getAxiosConfig(proxy);
+    const response = await requestWithRetry('get', 'https://api.ipify.org?format=json', null, config, 3, 2000, context);
+    return response.data.ip || 'Unknown';
+  } catch (error) {
+    logger.error(`Failed to get IP: ${error.message}`, { emoji: '❌ ', context });
+    return 'Error retrieving IP';
+  }
+}
+
+async function processAccount(account, index, total, proxy) {
+  const context = `Account ${index + 1}/${total}`;
+  logger.info(chalk.bold.magentaBright(`Starting account processing`), { emoji: '🚀 ', context });
+
+  const { privateKey } = account;
+  const address = deriveWalletAddress(privateKey);
+  if (!address) {
+    logger.error('Invalid private key', { emoji: '❌ ', context });
+    return;
+  }
+
+  printHeader(`Account Info ${context}`);
+  printInfo('Wallet Address', maskAddress(address), context);
+  const ip = await getPublicIP(proxy, context);
+  printInfo('IP', ip, context);
+  console.log('\n');
+
+  try {
+    logger.info('Starting authentication process...', { emoji: '🔐 ', context });
+    const nonceData = await fetchNonce(address, proxy, context);
+    if (!nonceData) return;
+
+    let currentCookies = [`referral_code=M648SLT2`, ...nonceData.setCookie.map(ck => ck.split('; ')[0])];
+
+    const loginResult = await executeLogin(privateKey, address, nonceData.csrfToken, proxy, context, currentCookies);
+    if (!loginResult) return;
+
+    currentCookies = [...currentCookies, ...loginResult.sessionCookies.map(ck => ck.split('; ')[0])];
+
+    logger.info(chalk.bold.greenBright(` Login successful`), { emoji: '✅ ', context });
+
+    const initialPoints = await retrieveBalance(address, proxy, context, currentCookies);
+
+    console.log('\n');
+
+    logger.info('Starting Checkin Process...', { emoji: '🛎️ ', context });
+    const checkinResult = await executeDailyCheckin(address, proxy, context, currentCookies);
+
+    if (checkinResult && checkinResult.success) {
+      await delay(15); 
+      const finalPoints = await retrieveBalance(address, proxy, context, currentCookies);
+      printProfileInfo(address, finalPoints || 0, context);
+    } else {
+      await delay(3);
+      printProfileInfo(address, initialPoints || 0, context);
+    }
+
+    logger.info(chalk.bold.greenBright(`Completed account processing`), { emoji: '🎉 ', context });
+    console.log(chalk.cyanBright('________________________________________________________________________________'));
+  } catch (error) {
+    logger.error(`Error processing account: ${error.message}`, { emoji: '❌ ', context });
+  }
+}
+
+let globalUseProxy = false;
+let globalProxies = [];
+
+async function initializeConfig() {
+  const useProxyAns = await askQuestion(chalk.cyanBright('🔌 Do You Want to Use Proxy? (y/n): '));
+  if (useProxyAns.trim().toLowerCase() === 'y') {
+    globalUseProxy = true;
+    globalProxies = await readProxies();
+    if (globalProxies.length === 0) {
+      globalUseProxy = false;
+      logger.warn('No proxies available, proceeding without proxy.', { emoji: '⚠️ ' });
+    }
+  } else {
+    logger.info('Proceeding without proxy.', { emoji: 'ℹ️ ' });
+  }
+}
+
+async function askQuestion(query) {
+  const rl = readline.createInterface({
+    input: process.stdin,
+    output: process.stdout
+  });
+  return new Promise(resolve => rl.question(query, ans => {
+    rl.close();
+    resolve(ans);
+  }));
+}
+
+async function runCycle() {
+  const accounts = await readPrivateKeys();
+  if (accounts.length === 0) {
+    logger.error('No private keys found in pk.txt. Exiting cycle.', { emoji: '❌ ' });
+    return;
+  }
+
+  for (let i = 0; i < accounts.length; i++) {
+    const proxy = globalUseProxy ? globalProxies[i % globalProxies.length] : null;
+    try {
+      await processAccount(accounts[i], i, accounts.length, proxy);
+    } catch (error) {
+      logger.error(`Error processing account: ${error.message}`, { emoji: '❌ ', context: `Account ${i + 1}/${accounts.length}` });
+    }
+    if (i < accounts.length - 1) {
+      console.log('\n\n');
+    }
+    await delay(5);
+  }
+}
+
+async function run() {
+  const terminalWidth = process.stdout.columns || 80;
+  cfonts.say('Modified by BBC WYK', {
+    font: 'block',
+    align: 'center',
+    colors: ['cyan', 'magenta'],
+    background: 'transparent',
+    letterSpacing: 1,
+    lineHeight: 1,
+    space: true
+  });
+  console.log(gradient.retro(centerText('=== Telegram Channel 🥷 Burma BlockChain ===', terminalWidth)));
+  console.log(gradient.retro(centerText('✪ BOT WANDRLust AUTO DAILY CHECK-IN ✪', terminalWidth)));
+  console.log('\n');
+  await initializeConfig();
+
+  while (true) {
+    await runCycle();
+    console.log();
+    logger.info(chalk.bold.yellowBright('Cycle completed. Waiting 24 hours...'), { emoji: '🔄 ' });
+    await delay(86400);
+  }
+}
+
+run().catch(error => logger.error(`Fatal error: ${error.message}`, { emoji: '❌' }));
