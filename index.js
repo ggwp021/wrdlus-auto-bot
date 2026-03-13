@@ -375,7 +375,7 @@ async function processAccount(account, index, total, proxy) {
     const nonceData = await fetchNonce(address, proxy, context);
     if (!nonceData) return;
 
-    let currentCookies = [`referral_code=M648SLT2`, ...nonceData.setCookie.map(ck => ck.split('; ')[0])];
+    let currentCookies = [`referral_code=9Q2VQC2L`, ...nonceData.setCookie.map(ck => ck.split('; ')[0])];
 
     const loginResult = await executeLogin(privateKey, address, nonceData.csrfToken, proxy, context, currentCookies);
     if (!loginResult) return;
